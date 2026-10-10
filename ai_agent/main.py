@@ -177,28 +177,16 @@ def run_query_job(
         message="Background orchestration started.",
     )
 
-        agent37_req = Agent37QueryRequest(
+        model = AgentStateModel(
+            raw_query=q,
             query=q,
             geo_context=geo,
+            modalities=mod,
+            user_id=uid,
             session_id=sid,
-            user_id=uid
         )
-        
-        import asyncio
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-        agent37_result = loop.run_until_complete(agent37_controller.process_query(agent37_req))
-
-        result_state = {
-            "final_response": agent37_result.final_response,
-            "artifacts": [], 
-            "intermediate_outputs": {},
-            "tool_outputs": {}
-        }
+        initial_state = model.to_graph_state()
+        result_state = orchestrator.run(q, initial_state)
 
         JOB_TRACES[job_id]["status"] = "completed"
         JOB_TRACES[job_id]["completed_at"] = (
