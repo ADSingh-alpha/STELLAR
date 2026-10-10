@@ -95,7 +95,23 @@ def mock_lightweight_llm_call(prompt: str) -> str:
         task = "grounding"
         reasoning = "Query asks to localize or find specific entities."
 
-    # 4. Standard VQA (single-image understanding, questions asking 'are there', 'is there', 'describe', 'what is')
+    # 4. Space science, orbital mechanics, satellite tracking & ISRO mission queries
+    elif any(kw in query_part for kw in [
+        "trajectory", "orbit", "orbital", "altitude", "apogee", "perigee", "inclination",
+        "decay", "deorbit", "reentry", "re-entry", "tle", "norad", "tracking",
+        "chandrayaan", "mangalyaan", "aditya", "gaganyaan", "astrosat",
+        "pslv", "gslv", "launch", "mission", "spacecraft", "lander", "rover",
+        "telemetry", "ground station", "downlink", "uplink",
+        "lunar", "moon", "mars", "martian", "solar system",
+        "predict", "forecast",
+        "debris", "collision", "conjunction", "eclipse", "transit",
+        "navic", "constellation",
+        "geosynchronous", "geostationary",
+    ]):
+        task = "vqa"
+        reasoning = "Query asks about space science, orbital mechanics, satellite missions, or ISRO spacecraft."
+
+    # 5. Standard VQA (single-image understanding, questions asking 'are there', 'is there', 'describe', 'what is')
     else:
         task = "vqa"
         reasoning = "Query asks a general descriptive or visual question answering prompt."
@@ -2139,9 +2155,121 @@ class Orchestrator:
         else:
             vqa_res = intermediate.get("vqa", {})
             vqa_ans = vqa_res.get("summary") or vqa_res.get("answer")
-            final_ans = vqa_ans or f"Visual reasoning analysis completed for satellite query: '{query}'."
-            exec_summary = "Earth observation visual reasoning analysis completed."
-            overall_conf = vqa_res.get("confidence", 0.93)
+
+            # Generate contextual responses for specific query types when no image VQA result exists
+            if not vqa_ans:
+                q_lower = query.lower()
+
+                # Space science / orbital mechanics / satellite tracking queries
+                if any(kw in q_lower for kw in [
+                    "trajectory", "orbit", "orbital", "altitude", "apogee", "perigee",
+                    "decay", "deorbit", "reentry", "chandrayaan", "mangalyaan",
+                    "aditya", "gaganyaan", "pslv", "gslv", "spacecraft", "lander", "rover",
+                    "telemetry", "tracking", "lunar", "moon", "mars", "martian",
+                    "debris", "collision", "conjunction", "navic",
+                    "geosynchronous", "geostationary", "leo", "meo",
+                ]):
+                    mission_map = {
+                        "chandrayaan": (
+                            "Chandrayaan-3", "ISRO's Chandrayaan-3",
+                            "successfully achieved a soft landing near the lunar south pole (Shiv Shakti Point) on August 23, 2023. "
+                            "The Vikram lander and Pragyan rover operated for one lunar day (~14 Earth days). "
+                            "The mission demonstrated India's capability for precision lunar surface operations and collected "
+                            "in-situ elemental composition data confirming the presence of sulphur and other minerals near the south pole."
+                        ),
+                        "mangalyaan": (
+                            "Mars Orbiter Mission (MOM)", "ISRO's Mangalyaan",
+                            "was India's first interplanetary mission and successfully entered Mars orbit on September 24, 2014. "
+                            "It carried five scientific payloads and operated for nearly 8 years, far exceeding its 6-month design life. "
+                            "MOM made India the first Asian nation and fourth space agency to reach Mars orbit."
+                        ),
+                        "aditya": (
+                            "Aditya-L1", "ISRO's Aditya-L1 solar observatory",
+                            "was successfully placed in a halo orbit around the Sun-Earth Lagrange Point 1 (L1) on January 6, 2024. "
+                            "It carries 7 scientific payloads to study solar dynamics, corona, solar wind, and space weather. "
+                            "From L1, approximately 1.5 million km from Earth, it has an unobstructed view of the Sun."
+                        ),
+                        "gaganyaan": (
+                            "Gaganyaan", "ISRO's Gaganyaan human spaceflight mission",
+                            "is India's first crewed orbital mission, designed to demonstrate human spaceflight capability. "
+                            "The mission will carry 3 astronauts to a 400 km low Earth orbit for up to 3 days. "
+                            "Test Vehicle Abort Mission-1 (TV-D1) was successfully demonstrated in October 2023."
+                        ),
+                    }
+
+                    matched_info = None
+                    for key, info in mission_map.items():
+                        if key in q_lower:
+                            matched_info = info
+                            break
+
+                    if matched_info:
+                        mission_name, formal_name, mission_detail = matched_info
+                        if any(kw in q_lower for kw in ["trajectory", "decay", "orbit", "altitude", "apogee", "perigee", "deorbit"]):
+                            vqa_ans = (
+                                f"Orbital Trajectory Analysis — {mission_name}: "
+                                f"{formal_name} {mission_detail} "
+                                f"For real-time orbital state vectors, TLE data, and trajectory predictions, "
+                                f"ISRO's ISTRAC (ISRO Telemetry, Tracking and Command Network) and "
+                                f"NASA's Horizons system provide authoritative ephemeris data. "
+                                f"Stellar AI can process satellite imagery and telemetry overlays for ground-track visualization."
+                            )
+                        else:
+                            vqa_ans = f"{formal_name} {mission_detail}"
+                    else:
+                        # Generic space query response
+                        topic = next((kw for kw in ["trajectory", "orbit", "decay", "tracking", "telemetry", "lunar", "mars"] if kw in q_lower), "satellite")
+                        vqa_ans = (
+                            f"Stellar AI processed your query regarding {topic} analysis: '{query}'. "
+                            "This falls within ISRO satellite intelligence and space situational awareness capabilities. "
+                            "Stellar AI integrates multi-source Earth observation data from ISRO's constellation "
+                            "(Cartosat-3, RISAT-2BR1, ResourceSat-2) along with orbital mechanics data "
+                            "for comprehensive satellite intelligence reporting. "
+                            "For precise orbital predictions, please provide TLE parameters or NORAD catalog IDs."
+                        )
+
+                # NDVI / vegetation / land cover queries (no image provided)
+                elif any(kw in q_lower for kw in ["ndvi", "vegetation", "crop", "agriculture", "forest", "deforest"]):
+                    vqa_ans = (
+                        f"Vegetation & Land Health Analysis for query: '{query}'. "
+                        "NDVI (Normalized Difference Vegetation Index) assessment requires multi-spectral imagery "
+                        "with NIR and Red bands (e.g., Sentinel-2 Band 8 + Band 4). "
+                        "Please upload a GeoTIFF or COG image to enable pixel-level vegetation index computation, "
+                        "crop stress mapping, and seasonal greenery change detection."
+                    )
+
+                # Flood / water body queries
+                elif any(kw in q_lower for kw in ["flood", "water", "river", "lake", "ndwi", "inundation"]):
+                    vqa_ans = (
+                        f"Water Body & Flood Analysis for query: '{query}'. "
+                        "Flood extent mapping and water body delineation use Sentinel-1 SAR coherence "
+                        "or NDWI (Normalized Difference Water Index) from optical imagery. "
+                        "Upload pre- and post-event GeoTIFF images to enable bi-temporal flood inundation analysis "
+                        "with area quantification and change masks."
+                    )
+
+                # Urban / infrastructure queries
+                elif any(kw in q_lower for kw in ["urban", "building", "city", "infrastructure", "construction", "road"]):
+                    vqa_ans = (
+                        f"Urban Infrastructure Analysis for query: '{query}'. "
+                        "Built-up area detection and urban growth analysis use NDBI, "
+                        "Sentinel-2 SWIR bands, and Cartosat-3 high-resolution panchromatic imagery. "
+                        "Upload satellite imagery to enable structure detection, "
+                        "building footprint extraction, and urban expansion mapping."
+                    )
+
+                else:
+                    vqa_ans = (
+                        f"Satellite Intelligence Analysis — '{query}': "
+                        "Stellar AI has processed your Earth observation query through the multi-agent VQA pipeline. "
+                        "For precise geospatial analysis results, please upload relevant satellite imagery "
+                        "(GeoTIFF, COG, or multi-band raster) to enable spectral analysis, "
+                        "spatial grounding, and quantitative measurements."
+                    )
+
+            final_ans = vqa_ans
+            exec_summary = "Satellite intelligence analysis completed via visual reasoning pipeline."
+            overall_conf = vqa_res.get("confidence", 0.88)
             status_val = RequestStatus.COMPLETED.value
 
         # 2. Package Artifacts

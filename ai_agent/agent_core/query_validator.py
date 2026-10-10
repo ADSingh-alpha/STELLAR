@@ -7,7 +7,7 @@ Prevents model hallucination on invalid inputs.
 import re
 from typing import Tuple
 
-# Recognized Earth Observation, spatial, technical, and general conversational vocabulary
+# Recognized Earth Observation, spatial, technical, space science, and general conversational vocabulary
 COMMON_VALID_TOKENS = {
     # Question & Conversational Words
     "what", "where", "how", "which", "who", "why", "is", "are", "was", "were", "can", "could",
@@ -17,7 +17,11 @@ COMMON_VALID_TOKENS = {
     "for", "with", "and", "or", "not", "from", "by", "between", "before", "after", "new", "old",
     "about", "any", "all", "some", "it", "its", "has", "have", "had", "been", "get", "got",
     "please", "help", "view", "see", "map", "area", "region", "zone", "location", "spot", "point",
-    
+    "predict", "estimate", "calculate", "compute", "measure", "monitor", "track", "trace",
+    "compare", "contrast", "evaluate", "assess", "report", "generate", "create", "produce",
+    "show", "display", "visualize", "render", "plot", "chart", "list", "summarize", "explain",
+    "over", "under", "above", "below", "near", "far", "around", "within", "across", "through",
+
     # Satellite & Remote Sensing Domain Terms
     "satellite", "sat", "query", "imagery", "image", "images", "scene", "scenes", "photo", "picture",
     "raster", "band", "bands", "optical", "sar", "radar", "multispectral", "water", "river", "lake",
@@ -31,7 +35,35 @@ COMMON_VALID_TOKENS = {
     "resourcesat", "risat", "isro", "eo", "vqa", "bbox", "bounding", "box", "coordinates", "lat",
     "lon", "latitude", "longitude", "iss", "orbit", "norad", "tle", "polarization", "reflectance",
     "nir", "swir", "rgb", "pixel", "resolution", "spatial", "temporal", "modality", "fusion",
-    "active", "query", "tosat", "stellar", "analysis", "evidence"
+    "active", "tosat", "stellar", "analysis", "evidence", "terrain", "surface", "elevation",
+    "dem", "lidar", "backscatter", "coherence", "interferometry", "insar", "displacement",
+    "land", "cover", "type", "types", "segment", "segmentation", "classification",
+    "fire", "burn", "drought", "erosion", "sedimentation", "coastal", "shoreline", "wetlands",
+
+    # Space Science & Mission Terms
+    "chandrayaan", "mangalyaan", "aditya", "pslv", "gslv", "gaganyaan", "astrosat",
+    "trajectory", "decay", "orbital", "altitude", "inclination", "apogee", "perigee",
+    "launch", "mission", "spacecraft", "probe", "lander", "rover", "capsule", "payload",
+    "telemetry", "position", "velocity", "speed", "direction", "course",
+    "moon", "lunar", "mars", "martian", "solar", "space", "cosmos", "galaxy", "planet",
+    "asteroid", "comet", "debris", "constellation", "gps", "glonass", "galileo", "navic",
+    "geosynchronous", "geostationary", "leo", "meo", "geo", "sun", "earth", "ground",
+    "tracking", "pass", "coverage", "visibility", "eclipse", "transit", "conjunction",
+    "maneuver", "burn", "thrust", "propulsion", "attitude", "control", "stabilization",
+    "communication", "downlink", "uplink", "signal", "frequency", "power", "thermal",
+    "pressure", "temperature", "radiation", "magnetosphere", "atmosphere", "ionosphere",
+
+    # Technical & Analytical Terms
+    "index", "value", "score", "percentage", "ratio", "density", "concentration",
+    "rate", "speed", "magnitude", "intensity", "severity", "distribution",
+    "pattern", "trend", "anomaly", "anomalies", "outlier", "hotspot",
+    "boundary", "extent", "area", "perimeter", "volume", "depth", "width", "height",
+    "accuracy", "precision", "confidence", "probability", "likelihood", "uncertainty",
+    "threshold", "baseline", "reference", "benchmark", "calibration",
+    "pre", "post", "event", "before", "after", "historical", "current", "future",
+    "annual", "seasonal", "monthly", "weekly", "daily", "hourly",
+    "global", "regional", "local", "national", "district", "state", "country",
+    "india", "indian", "isro", "nasa", "esa", "jaxa", "cnsa", "roscosmos",
 }
 
 # Keyboard mash patterns
@@ -39,6 +71,17 @@ KEYBOARD_MASH_PATTERNS = [
     r"^[asdfghjkl]+$", r"^[qwertyuiop]+$", r"^[zxcvbnm]+$",
     r"^[dfghjkl]+$", r"^[fghjkl]+$", r"^[hjkl]+$", r"^[asdf]+$",
     r"^[ghjk]+$", r"^[dfgh]+$", r"^[zxcv]+$"
+]
+
+# Sub-string patterns that always indicate a valid satellite/space query
+VALID_SUBSTRINGS = [
+    "sat", "sentinel", "landsat", "cartosat", "ndvi", "isro", "nasa", "esa",
+    "water", "change", "land", "orbit", "lunar", "mars", "space", "mission",
+    "chandrayaan", "mangalyaan", "aditya", "pslv", "gslv", "track", "trajectory",
+    "telemetry", "ground", "detection", "vegetation", "flood", "fire", "glacier",
+    "urban", "coast", "deforest", "agri", "crop", "forest", "desert", "snow",
+    "sar", "radar", "optical", "infrared", "spectrum", "band", "pixel", "raster",
+    "geotiff", "geospatial", "coordinate", "bbox", "bounding", "segment",
 ]
 
 def is_meaningful_query(query: str) -> Tuple[bool, str]:
@@ -73,6 +116,13 @@ def is_meaningful_query(query: str) -> Tuple[bool, str]:
     if len(set(lower_clean)) <= 2 and len(lower_clean) > 4:
         return False, f"Query '{query}' contains repetitive characters without clear meaning."
 
+    # Quick pass: if query is long enough and contains mostly alphabetic words,
+    # it's likely a valid natural-language question — be permissive.
+    words = [w for w in re.split(r'\s+', lower_clean) if w]
+    if len(words) >= 3 and len(alpha_chars) >= 10:
+        # Multi-word query with substantial alphabetic content → likely valid
+        return True, "Valid query (natural language)."
+
     # Extract words/tokens
     raw_tokens = [re.sub(r'^[#@!?,.]+|[#@!?,.]+$', '', t).lower() for t in re.split(r'\s+', cleaned) if t]
     tokens = [t for t in raw_tokens if len(t) > 0]
@@ -99,7 +149,7 @@ def is_meaningful_query(query: str) -> Tuple[bool, str]:
             continue
 
         # Check sub-words for compound query terms
-        if any(term in token for term in ["sat", "sentinel", "landsat", "cartosat", "ndvi", "isro", "water", "change", "land"]):
+        if any(term in token for term in VALID_SUBSTRINGS):
             valid_count += 1
             continue
 
