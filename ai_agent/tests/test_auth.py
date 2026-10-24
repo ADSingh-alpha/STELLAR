@@ -8,11 +8,18 @@ import sys
 import uuid
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Add repository root to sys.path for package imports
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from fastapi.testclient import TestClient
-from main import app
-from auth import hash_password, verify_password, create_access_token, decode_access_token
+try:
+    from ai_agent.main import app
+    from ai_agent.auth import hash_password, verify_password, create_access_token, decode_access_token
+except ImportError:
+    from main import app
+    from auth import hash_password, verify_password, create_access_token, decode_access_token
 
 
 def test_auth_pipeline():

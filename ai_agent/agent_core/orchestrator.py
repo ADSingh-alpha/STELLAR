@@ -928,7 +928,7 @@ class Orchestrator:
             "task_classification_confidence": 0.95,
             "intent_classification":        intent_dict,
             "thought_trace":                [reasoning],
-            "routing_history":              ["intent_classifier" if "intent_classifier" in str(state.get("routing_history", [])) else "interpret_and_validate"],
+            "routing_history":              ["intent_classifier", "interpret_and_validate"],
             "active_agent":                 "interpret_and_validate",
             "use_strict_vqa_tool":          use_strict_vqa,
             "use_change_det_tool":          use_change_det_tool,

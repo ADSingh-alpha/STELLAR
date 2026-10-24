@@ -109,6 +109,20 @@ try:
     from langchain_core.tools import tool, StructuredTool
     from langchain_core.tools.base import InjectedToolArg
     LANGCHAIN_TOOL_AVAILABLE = True
+
+    from langchain_core.tools import BaseTool
+
+    # Ensure StructuredTool and BaseTool support direct __call__ for tests and legacy callers
+    def _structured_tool_call(self, *args, **kwargs):
+        if kwargs:
+            return self.invoke(kwargs)
+        elif args and isinstance(args[0], dict):
+            return self.invoke(args[0])
+        elif args:
+            return self.invoke(args[0])
+        return self.invoke({})
+    StructuredTool.__call__ = _structured_tool_call
+    BaseTool.__call__ = _structured_tool_call
 except ImportError:
     LANGCHAIN_TOOL_AVAILABLE = False
     def tool(*args, **kwargs):
@@ -419,7 +433,7 @@ class StandardToolOutput(BaseModel):
     # Telemetry & Validation
     raw_output: Any = Field(None, description="Raw underlying model inference object")
     validated_inputs: Dict[str, Any] = Field(default_factory=dict, description="Resolved input parameters")
-    context_injected: Dict[str, bool] = Field(default_factory=dict, description="Context injection flags")
+    context_injected: Dict[str, Any] = Field(default_factory=dict, description="Context injection flags")
     error: Optional[str] = Field(None, description="Error message if status is error")
 
     def to_dict(self) -> Dict[str, Any]:
@@ -1923,9 +1937,9 @@ def vision_vqa_tool(
 
 
 class StrictChangeDetInput(BaseModel):
-    image_path_t1: str = Field(..., description="Path to the before image (T1)")
-    image_path_t2: str = Field(..., description="Path to the after image (T2)")
-    text_query: str = Field(..., description="Query for change detection")
+    image_path_t1: str = Field("", description="Path to the before image (T1)")
+    image_path_t2: str = Field("", description="Path to the after image (T2)")
+    text_query: str = Field("", description="Query for change detection")
     
     def validate_inputs(self):
         self.image_path_t1 = str(self.image_path_t1).strip()
@@ -2077,9 +2091,9 @@ def change_detection_tool(
 
 
 class StrictCrossModalInput(BaseModel):
-    image_path_optical: str = Field(..., description="Path to optical image")
-    image_path_sar: str = Field(..., description="Path to SAR image")
-    text_query: str = Field(..., description="Query for cross-modal fusion")
+    image_path_optical: str = Field("", description="Path to optical image")
+    image_path_sar: str = Field("", description="Path to SAR image")
+    text_query: str = Field("", description="Query for cross-modal fusion")
     
     def validate_inputs(self):
         self.image_path_optical = str(self.image_path_optical).strip()

@@ -10,12 +10,17 @@ import io
 import json
 from pathlib import Path
 
-# Add ai_agent directory to sys.path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Add repository root to sys.path for package imports
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 try:
     from fastapi.testclient import TestClient
-    from main import app
+    try:
+        from ai_agent.main import app
+    except ImportError:
+        from main import app
     TESTCLIENT_AVAILABLE = True
 except ImportError as e:
     print(f"[Warning] TestClient or imports not fully available: {e}")

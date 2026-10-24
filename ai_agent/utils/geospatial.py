@@ -176,6 +176,18 @@ def _infer_modality_from_bands(
     return "unknown", 0.20, []
 
 
+def identify_sensor_modality(band_count: int) -> str:
+    """
+    Identify sensor modality (optical vs sar) from band count.
+    Used for rapid validation checks across models and test suites.
+    """
+    if band_count in (1, 2):
+        return "sar"
+    elif band_count >= 3:
+        return "optical"
+    return "unknown"
+
+
 def extract_geotiff_metadata(file_path: str) -> Dict[str, Any]:
     """
     Extract detailed metadata from a GeoTIFF/TIFF raster.
