@@ -112,6 +112,22 @@ from .auth import (
     verify_password,
     create_access_token,
     decode_access_token,
+    verify_authenticated_caller,
+    verify_internal_service_key,
+)
+from .knowledge_store import (
+    init_knowledge_store,
+    save_knowledge_card,
+    get_knowledge_card,
+    get_knowledge_cards,
+    update_knowledge_card,
+    delete_knowledge_card,
+    save_knowledge_chain,
+    get_knowledge_chain,
+    get_knowledge_chains,
+    delete_knowledge_chain,
+    retrieve_relevant_knowledge,
+    format_knowledge_for_context,
 )
 
 # Define file upload directory
@@ -238,8 +254,9 @@ agent37_controller = Agent37Controller(use_mock=True)
 # In-memory execution trace store.
 # This will later be replaced/extended with persistent database storage.
 JOB_TRACES: Dict[str, Dict[str, Any]] = {}
-# Initialize persistent audit database.
+# Initialize persistent audit database and NODUS-inspired knowledge store.
 init_persistence()
+init_knowledge_store()
 def run_query_job(
     job_id: str,
     q: str,
@@ -1243,3 +1260,237 @@ async def websocket_job_status(websocket: WebSocket, job_id: str):
 
     except WebSocketDisconnect:
         return
+
+
+# ============================================================================
+# NODUS-Inspired Native Knowledge Reuse Endpoints
+# ============================================================================
+
+class KnowledgeCardCreate(BaseModel):
+    id: Optional[str] = None
+    user_id: Optional[Union[str, int]] = None
+    title: str
+    query_text: Optional[str] = ""
+    summary: str
+    content: Optional[str] = ""
+    structured_data: Optional[Dict[str, Any]] = None
+    tags: Optional[List[str]] = None
+    queue: Optional[str] = "default"
+    source_image_ids: Optional[List[str]] = None
+    source_job_id: Optional[str] = None
+    source_workflow: Optional[str] = None
+    evidence_provenance: Optional[Dict[str, Any]] = None
+    user_notes: Optional[str] = None
+
+
+class KnowledgeCardUpdate(BaseModel):
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    content: Optional[str] = None
+    user_notes: Optional[str] = None
+    queue: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+class KnowledgeChainCreate(BaseModel):
+    id: Optional[str] = None
+    user_id: Optional[Union[str, int]] = None
+    title: str
+    description: Optional[str] = ""
+    tags: Optional[List[str]] = None
+    nodes: List[Dict[str, Any]] = []
+
+
+class KnowledgeChainUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+    nodes: Optional[List[Dict[str, Any]]] = None
+
+
+def _resolve_caller_user_id(
+    authorization: Optional[str] = None,
+    x_internal_key: Optional[str] = None,
+    x_user_id: Optional[str] = None,
+    explicit_user_id: Optional[Union[str, int]] = None,
+) -> Optional[str]:
+    """Helper to extract user ID from JWT, internal gateway header, or explicit parameter."""
+    if explicit_user_id is not None and str(explicit_user_id).strip():
+        return str(explicit_user_id).strip()
+    if x_user_id is not None and str(x_user_id).strip():
+        return str(x_user_id).strip()
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+        payload = decode_access_token(token)
+        if payload:
+            return str(payload.get("user_id") or payload.get("sub") or "")
+    return None
+
+
+@app.post("/api/v1/knowledge/cards", tags=["Knowledge Reuse"])
+def api_create_knowledge_card(
+    card: KnowledgeCardCreate,
+    authorization: Optional[str] = Header(None),
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Service-Key"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+):
+    """Save an analysis finding or note as a reusable Knowledge Card."""
+    uid = _resolve_caller_user_id(authorization, x_internal_key, x_user_id, card.user_id)
+    payload = card.model_dump() if hasattr(card, "model_dump") else card.__dict__.copy()
+    payload["user_id"] = uid
+    saved = save_knowledge_card(payload)
+    return {"status": "success", "card": saved}
+
+
+@app.get("/api/v1/knowledge/cards", tags=["Knowledge Reuse"])
+def api_list_knowledge_cards(
+    q: Optional[str] = None,
+    tag: Optional[str] = None,
+    queue: Optional[str] = None,
+    limit: int = 50,
+    user_id: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Service-Key"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+):
+    """List and filter saved Knowledge Cards with ownership isolation."""
+    uid = _resolve_caller_user_id(authorization, x_internal_key, x_user_id, user_id)
+    cards = get_knowledge_cards(user_id=uid, search_term=q, tag=tag, queue=queue, limit=limit)
+    return {"status": "success", "count": len(cards), "cards": cards}
+
+
+@app.get("/api/v1/knowledge/cards/{card_id}", tags=["Knowledge Reuse"])
+def api_get_knowledge_card(
+    card_id: str,
+    user_id: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Service-Key"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+):
+    """Retrieve a specific Knowledge Card by ID."""
+    uid = _resolve_caller_user_id(authorization, x_internal_key, x_user_id, user_id)
+    card = get_knowledge_card(card_id, user_id=uid)
+    if not card:
+        raise HTTPException(status_code=404, detail="Knowledge card not found or unauthorized.")
+    return {"status": "success", "card": card}
+
+
+@app.put("/api/v1/knowledge/cards/{card_id}", tags=["Knowledge Reuse"])
+def api_update_knowledge_card(
+    card_id: str,
+    updates: KnowledgeCardUpdate,
+    user_id: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Service-Key"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+):
+    """Update title, summary, notes, queue, or tags on an existing Knowledge Card."""
+    uid = _resolve_caller_user_id(authorization, x_internal_key, x_user_id, user_id)
+    update_data = {k: v for k, v in (updates.model_dump() if hasattr(updates, "model_dump") else updates.__dict__).items() if v is not None}
+    updated = update_knowledge_card(card_id, update_data, user_id=uid)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Knowledge card not found or unauthorized to update.")
+    return {"status": "success", "card": updated}
+
+
+@app.delete("/api/v1/knowledge/cards/{card_id}", tags=["Knowledge Reuse"])
+def api_delete_knowledge_card(
+    card_id: str,
+    user_id: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Service-Key"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+):
+    """Delete a Knowledge Card with ownership validation."""
+    uid = _resolve_caller_user_id(authorization, x_internal_key, x_user_id, user_id)
+    deleted = delete_knowledge_card(card_id, user_id=uid)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Knowledge card not found or unauthorized to delete.")
+    return {"status": "success", "deleted": True, "card_id": card_id}
+
+
+@app.post("/api/v1/knowledge/chains", tags=["Knowledge Reuse"])
+def api_create_knowledge_chain(
+    chain: KnowledgeChainCreate,
+    authorization: Optional[str] = Header(None),
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Service-Key"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+):
+    """Create a structured, ordered Knowledge Chain linking multiple analysis steps."""
+    uid = _resolve_caller_user_id(authorization, x_internal_key, x_user_id, chain.user_id)
+    payload = chain.model_dump() if hasattr(chain, "model_dump") else chain.__dict__.copy()
+    payload["user_id"] = uid
+    saved = save_knowledge_chain(payload)
+    return {"status": "success", "chain": saved}
+
+
+@app.get("/api/v1/knowledge/chains", tags=["Knowledge Reuse"])
+def api_list_knowledge_chains(
+    q: Optional[str] = None,
+    limit: int = 50,
+    user_id: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Service-Key"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+):
+    """List Knowledge Chains for the authenticated user."""
+    uid = _resolve_caller_user_id(authorization, x_internal_key, x_user_id, user_id)
+    chains = get_knowledge_chains(user_id=uid, search_term=q, limit=limit)
+    return {"status": "success", "count": len(chains), "chains": chains}
+
+
+@app.get("/api/v1/knowledge/chains/{chain_id}", tags=["Knowledge Reuse"])
+def api_get_knowledge_chain(
+    chain_id: str,
+    user_id: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Service-Key"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+):
+    """Retrieve an ordered Knowledge Chain and its step nodes."""
+    uid = _resolve_caller_user_id(authorization, x_internal_key, x_user_id, user_id)
+    chain = get_knowledge_chain(chain_id, user_id=uid)
+    if not chain:
+        raise HTTPException(status_code=404, detail="Knowledge chain not found or unauthorized.")
+    return {"status": "success", "chain": chain}
+
+
+@app.delete("/api/v1/knowledge/chains/{chain_id}", tags=["Knowledge Reuse"])
+def api_delete_knowledge_chain(
+    chain_id: str,
+    user_id: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Service-Key"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+):
+    """Delete a Knowledge Chain."""
+    uid = _resolve_caller_user_id(authorization, x_internal_key, x_user_id, user_id)
+    deleted = delete_knowledge_chain(chain_id, user_id=uid)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Knowledge chain not found or unauthorized to delete.")
+    return {"status": "success", "deleted": True, "chain_id": chain_id}
+
+
+@app.get("/api/v1/knowledge/retrieve", tags=["Knowledge Reuse"])
+def api_retrieve_relevant_knowledge(
+    query: str,
+    limit: int = 3,
+    user_id: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Service-Key"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+):
+    """
+    Search and retrieve relevant knowledge items for a query.
+    Returns both raw card items and safe formatted context block.
+    """
+    uid = _resolve_caller_user_id(authorization, x_internal_key, x_user_id, user_id)
+    cards = retrieve_relevant_knowledge(query, user_id=uid, limit=limit)
+    injected_context = format_knowledge_for_context(cards)
+    return {
+        "status": "success",
+        "query": query,
+        "matched_count": len(cards),
+        "cards": cards,
+        "formatted_context": injected_context,
+    }

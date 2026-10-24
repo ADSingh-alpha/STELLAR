@@ -19,7 +19,12 @@ import {
   Download,
   LogOut,
   FileCheck,
-  Info
+  Info,
+  Lightbulb,
+  Layers,
+  Sparkles,
+  Send,
+  PlusCircle
 } from 'lucide-react';
 import './GlassSidebar.css';
 import { useT, useLanguage } from '../context/LanguageContext';
@@ -43,8 +48,9 @@ const getTagDisplay = (tagId, t, isHindi) => {
 };
 
 const NAV_ITEMS = [
-  { id: 'history',   icon: Clock,    labelKey: 'navHistory' },
+  { id: 'history',   icon: Clock,     labelKey: 'navHistory' },
   { id: 'documents', icon: FileText,  labelKey: 'navNotesDocs', title: 'Orbit Notes & Documents' },
+  { id: 'knowledge', icon: Lightbulb, labelKey: 'navKnowledge', title: 'Knowledge Base (NODUS)' },
   { id: 'settings',  icon: Settings,  labelKey: 'navSettings' },
   { id: 'profile',   icon: User,      labelKey: 'navProfile' },
 ];
@@ -193,6 +199,134 @@ function GlassSidebar({ activeNav, onNavChange, onSelectQuery, currentUser, onLo
       console.error('Failed to persist notes:', e);
     }
   }, [notesList]);
+
+  // ── NODUS-Inspired Knowledge Reuse State ──
+  const [knowledgeTab, setKnowledgeTab] = useState('cards'); // 'cards' | 'chains'
+  const [knowledgeCards, setKnowledgeCards] = useState([
+    {
+      id: 'kcard_sample_1',
+      title: 'Cartosat-3 High-Res Urban Segmentation',
+      query_text: 'Identify dense built-up residential clusters and estimate road density',
+      summary: 'Segmentation identified 4 distinct urban sub-clusters with high building density (>75%). Spectral signature shows asphalt paving and concrete roof dominance.',
+      queue: 'default',
+      tags: ['cartosat3', 'urban', 'segmentation'],
+      created_at: new Date(Date.now() - 3600000).toISOString(),
+    },
+    {
+      id: 'kcard_sample_2',
+      title: 'Sentinel-2 Monsoonal Flood Inundation Baseline',
+      query_text: 'Detect inundated agricultural parcels in Godavari river basin',
+      summary: 'MNDWI index indicated 34.2 sq km of waterlogging. Pre-monsoon baseline confirmed intact embankments with post-event overflow.',
+      queue: 'quick',
+      tags: ['sentinel2', 'flood', 'water', 'change_detection'],
+      created_at: new Date(Date.now() - 86400000).toISOString(),
+    }
+  ]);
+  const [knowledgeChains, setKnowledgeChains] = useState([
+    {
+      id: 'kchain_sample_1',
+      title: 'Monsoon Hazard Rapid Response Sequence',
+      description: 'Ordered multi-stage pipeline: Baseline Surface Water -> Inundation Extent -> Urban Vulnerability',
+      card_ids: ['kcard_sample_2', 'kcard_sample_1'],
+      created_at: new Date(Date.now() - 7200000).toISOString(),
+    }
+  ]);
+  const [knowledgeFilter, setKnowledgeFilter] = useState('');
+  const [selectedQueue, setSelectedQueue] = useState('all');
+  const [isCreatingChain, setIsCreatingChain] = useState(false);
+  const [newChainTitle, setNewChainTitle] = useState('');
+  const [newChainDesc, setNewChainDesc] = useState('');
+  const [selectedChainCardIds, setSelectedChainCardIds] = useState([]);
+
+  // Fetch knowledge from backend when tab opens
+  const fetchKnowledge = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('stellar_token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const [cardsRes, chainsRes] = await Promise.allSettled([
+        fetch('/api/v1/knowledge/cards', { headers }),
+        fetch('/api/v1/knowledge/chains', { headers })
+      ]);
+      if (cardsRes.status === 'fulfilled' && cardsRes.value.ok) {
+        const cardsData = await cardsRes.value.json();
+        if (Array.isArray(cardsData) && cardsData.length > 0) {
+          setKnowledgeCards(cardsData);
+        }
+      }
+      if (chainsRes.status === 'fulfilled' && chainsRes.value.ok) {
+        const chainsData = await chainsRes.value.json();
+        if (Array.isArray(chainsData) && chainsData.length > 0) {
+          setKnowledgeChains(chainsData);
+        }
+      }
+    } catch (e) {
+      console.warn('Using local knowledge store fallback:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (active === 'knowledge') {
+      fetchKnowledge();
+    }
+  }, [active, fetchKnowledge]);
+
+  const handleDeleteCard = async (cardId, e) => {
+    if (e) e.stopPropagation();
+    try {
+      const token = localStorage.getItem('stellar_token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      await fetch(`/api/v1/knowledge/cards/${cardId}`, { method: 'DELETE', headers });
+    } catch (_) {}
+    setKnowledgeCards(prev => prev.filter(c => c.id !== cardId));
+  };
+
+  const handleDeleteChain = async (chainId, e) => {
+    if (e) e.stopPropagation();
+    try {
+      const token = localStorage.getItem('stellar_token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      await fetch(`/api/v1/knowledge/chains/${chainId}`, { method: 'DELETE', headers });
+    } catch (_) {}
+    setKnowledgeChains(prev => prev.filter(c => c.id !== chainId));
+  };
+
+  const handleSaveChain = async (e) => {
+    e.preventDefault();
+    if (!newChainTitle.trim() || selectedChainCardIds.length === 0) return;
+    const newChain = {
+      id: `kchain_${Date.now()}`,
+      title: newChainTitle.trim(),
+      description: newChainDesc.trim(),
+      card_ids: selectedChainCardIds,
+      created_at: new Date().toISOString()
+    };
+    try {
+      const token = localStorage.getItem('stellar_token');
+      const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+      const res = await fetch('/api/v1/knowledge/chains', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(newChain)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setKnowledgeChains(prev => [data, ...prev]);
+      } else {
+        setKnowledgeChains(prev => [newChain, ...prev]);
+      }
+    } catch (_) {
+      setKnowledgeChains(prev => [newChain, ...prev]);
+    }
+    setIsCreatingChain(false);
+    setNewChainTitle('');
+    setNewChainDesc('');
+    setSelectedChainCardIds([]);
+  };
+
+  const handleInjectKnowledge = (queryText) => {
+    if (onSelectQuery) onSelectQuery(queryText);
+    setActive(null);
+  };
 
   const handleSelect = (id, e) => {
     if (e) e.stopPropagation();
@@ -396,7 +530,7 @@ function GlassSidebar({ activeNav, onNavChange, onSelectQuery, currentUser, onLo
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (sidebarRef.current && !sidebarRef.current.contains(event.target)) {
-        if (active !== 'history' && active !== 'documents') {
+        if (active !== 'history' && active !== 'documents' && active !== 'knowledge') {
           setActive(null);
           if (onNavChange) onNavChange(null);
         }
@@ -874,6 +1008,330 @@ function GlassSidebar({ activeNav, onNavChange, onSelectQuery, currentUser, onLo
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── NODUS Knowledge Base Modal (Cards, Queues & Reasoning Chains) ── */}
+      {active === 'knowledge' && (
+        <div className="knowledge-modal-backdrop" onClick={() => setActive(null)}>
+          <div className="knowledge-center-card" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="knowledge-card-header">
+              <div className="knowledge-title-cyan">
+                <div className="knowledge-cyan-icon-badge">
+                  <Lightbulb size={20} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h2 className="knowledge-main-heading">
+                      {isHindi ? 'नोडस ज्ञान आधार (NODUS)' : 'NODUS Knowledge Base'}
+                    </h2>
+                    <span className="knowledge-native-pill">SatQuery Native</span>
+                  </div>
+                  <p className="knowledge-sub-heading">
+                    {isHindi
+                      ? 'पुन: प्रयोज्य उपग्रह विश्लेषण कार्ड, प्राथमिकता कतारें और मल्टी-स्टेज रीजनिंग चेन।'
+                      : 'Reusable satellite analysis cards, priority queues, and multi-stage reasoning chains.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="knowledge-header-actions">
+                <button className="history-close-btn" onClick={() => setActive(null)} title="Close">
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Subnav Tabs: Cards vs Chains */}
+            <div className="knowledge-subnav-row">
+              <div className="knowledge-tab-buttons">
+                <button
+                  className={`knowledge-subnav-btn ${knowledgeTab === 'cards' ? 'active' : ''}`}
+                  onClick={() => setKnowledgeTab('cards')}
+                >
+                  <Sparkles size={14} /> {isHindi ? 'ज्ञान कार्ड' : 'Knowledge Cards'} ({knowledgeCards.length})
+                </button>
+                <button
+                  className={`knowledge-subnav-btn ${knowledgeTab === 'chains' ? 'active' : ''}`}
+                  onClick={() => setKnowledgeTab('chains')}
+                >
+                  <Layers size={14} /> {isHindi ? 'रीजनिंग चेन' : 'Reasoning Chains'} ({knowledgeChains.length})
+                </button>
+              </div>
+
+              {knowledgeTab === 'chains' && !isCreatingChain && (
+                <button className="knowledge-new-chain-btn" onClick={() => setIsCreatingChain(true)}>
+                  <Plus size={14} /> {isHindi ? 'नई चेन बनाएं' : 'New Chain'}
+                </button>
+              )}
+            </div>
+
+            {/* TAB 1: KNOWLEDGE CARDS */}
+            {knowledgeTab === 'cards' && (
+              <>
+                {/* Search & Queue Bar */}
+                <div className="knowledge-control-bar">
+                  <div className="knowledge-search-input-wrap">
+                    <Search size={15} style={{ color: '#00f2fe' }} />
+                    <input
+                      type="text"
+                      className="knowledge-search-input"
+                      placeholder={isHindi ? 'शीर्षक, टैग या सारांश खोजें...' : 'Search title, tags, or summary...'}
+                      value={knowledgeFilter}
+                      onChange={(e) => setKnowledgeFilter(e.target.value)}
+                    />
+                    {knowledgeFilter && (
+                      <button className="history-filter-clear" onClick={() => setKnowledgeFilter('')}>
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Queue Selector Filter */}
+                  <div className="knowledge-queue-pills">
+                    {['all', 'default', 'quick', 'q1', 'q2'].map((q) => (
+                      <button
+                        key={q}
+                        className={`knowledge-queue-pill ${selectedQueue === q ? 'active' : ''}`}
+                        onClick={() => setSelectedQueue(q)}
+                      >
+                        {q === 'all' ? (isHindi ? 'सभी कतारें' : 'All Queues') : q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Cards List */}
+                <div className="knowledge-cards-scroll">
+                  {(() => {
+                    const filtered = knowledgeCards.filter((card) => {
+                      const matchesQueue = selectedQueue === 'all' || (card.queue || 'default').toLowerCase() === selectedQueue.toLowerCase();
+                      const filter = knowledgeFilter.toLowerCase();
+                      const matchesFilter =
+                        !filter ||
+                        (card.title || '').toLowerCase().includes(filter) ||
+                        (card.summary || '').toLowerCase().includes(filter) ||
+                        (card.query_text || '').toLowerCase().includes(filter) ||
+                        (card.tags || []).some((t) => t.toLowerCase().includes(filter));
+                      return matchesQueue && matchesFilter;
+                    });
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="knowledge-empty-state">
+                          <Lightbulb size={36} style={{ color: 'rgba(0, 242, 254, 0.4)', marginBottom: '10px' }} />
+                          <p style={{ margin: 0, fontWeight: 600 }}>
+                            {isHindi ? 'कोई ज्ञान कार्ड नहीं मिला' : 'No Knowledge Cards Found'}
+                          </p>
+                          <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>
+                            {isHindi
+                              ? 'चैट में किसी भी विश्लेषण को ज्ञान कार्ड के रूप में सहेजें।'
+                              : 'Save any AI response in chat using "💡 Save to Knowledge (NODUS)" or clear search filter.'}
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="knowledge-cards-grid">
+                        {filtered.map((card) => (
+                          <div key={card.id} className="knowledge-card-item">
+                            <div className="knowledge-card-top">
+                              <span className="knowledge-card-title">{card.title}</span>
+                              <span className={`knowledge-queue-tag queue-${card.queue || 'default'}`}>
+                                {card.queue || 'default'}
+                              </span>
+                            </div>
+
+                            {card.query_text && (
+                              <p className="knowledge-card-query">
+                                <strong>Query:</strong> "{card.query_text}"
+                              </p>
+                            )}
+
+                            <p className="knowledge-card-summary">{card.summary}</p>
+
+                            <div className="knowledge-card-tags">
+                              {(card.tags || []).map((tg, idx) => (
+                                <span key={idx} className="knowledge-tag-chip">
+                                  #{tg}
+                                </span>
+                              ))}
+                            </div>
+
+                            <div className="knowledge-card-footer">
+                              <span className="knowledge-card-date">
+                                <Clock size={11} /> {new Date(card.created_at || Date.now()).toLocaleDateString()}
+                              </span>
+                              <div className="knowledge-card-actions">
+                                <button
+                                  className="knowledge-card-action-btn inject"
+                                  onClick={() => handleInjectKnowledge(card.query_text || card.title)}
+                                  title="Inject into Query Input"
+                                >
+                                  <Send size={12} /> {isHindi ? 'क्वेरी में उपयोग करें' : 'Use in Query'}
+                                </button>
+                                <button
+                                  className="knowledge-card-action-btn delete"
+                                  onClick={(e) => handleDeleteCard(card.id, e)}
+                                  title="Delete Card"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </>
+            )}
+
+            {/* TAB 2: REASONING CHAINS */}
+            {knowledgeTab === 'chains' && (
+              <div className="knowledge-chains-container">
+                {isCreatingChain ? (
+                  <form className="knowledge-chain-builder" onSubmit={handleSaveChain}>
+                    <h3 className="chain-builder-heading">
+                      <PlusCircle size={16} /> {isHindi ? 'नई नॉलेज चेन बनाएं' : 'Create New Knowledge Chain'}
+                    </h3>
+                    <input
+                      type="text"
+                      className="chain-input-text"
+                      placeholder="Chain Title (e.g. Coastal Hazard Rapid Assessment Sequence)"
+                      value={newChainTitle}
+                      onChange={(e) => setNewChainTitle(e.target.value)}
+                      required
+                    />
+                    <textarea
+                      className="chain-input-desc"
+                      placeholder="Chain Description / Workflow Purpose..."
+                      value={newChainDesc}
+                      onChange={(e) => setNewChainDesc(e.target.value)}
+                    />
+
+                    <div className="chain-card-picker">
+                      <label style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>
+                        {isHindi ? 'चेन में शामिल करने के लिए कार्ड चुनें:' : 'Select Knowledge Cards for this Sequence:'}
+                      </label>
+                      <div className="chain-card-checklist">
+                        {knowledgeCards.map((c) => {
+                          const isSelected = selectedChainCardIds.includes(c.id);
+                          return (
+                            <label key={c.id} className={`chain-pick-row ${isSelected ? 'selected' : ''}`}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedChainCardIds((prev) => [...prev, c.id]);
+                                  } else {
+                                    setSelectedChainCardIds((prev) => prev.filter((id) => id !== c.id));
+                                  }
+                                }}
+                              />
+                              <span style={{ fontWeight: 600, color: '#f1f5f9' }}>{c.title}</span>
+                              <span style={{ fontSize: '0.72rem', color: '#94a3b8', marginLeft: 'auto' }}>
+                                #{c.queue || 'default'}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="chain-builder-actions">
+                      <button
+                        type="button"
+                        className="history-clear-btn"
+                        onClick={() => {
+                          setIsCreatingChain(false);
+                          setSelectedChainCardIds([]);
+                        }}
+                      >
+                        {isHindi ? 'रद्द करें' : 'Cancel'}
+                      </button>
+                      <button
+                        type="submit"
+                        className="save-note-submit-btn"
+                        disabled={!newChainTitle.trim() || selectedChainCardIds.length === 0}
+                      >
+                        <Save size={14} /> {isHindi ? 'चेन सहेजें' : 'Save Chain'}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="knowledge-chains-scroll">
+                    {knowledgeChains.length === 0 ? (
+                      <div className="knowledge-empty-state">
+                        <Layers size={36} style={{ color: 'rgba(0, 242, 254, 0.4)', marginBottom: '10px' }} />
+                        <p style={{ margin: 0, fontWeight: 600 }}>
+                          {isHindi ? 'कोई रीजनिंग चेन नहीं मिली' : 'No Reasoning Chains Created'}
+                        </p>
+                        <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>
+                          {isHindi
+                            ? 'विश्लेषणों को क्रमबद्ध अनुक्रम में जोड़ने के लिए "New Chain" पर क्लिक करें।'
+                            : 'Click "New Chain" above to link related analytical steps into an ordered sequence.'}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="knowledge-chains-list">
+                        {knowledgeChains.map((chain) => (
+                          <div key={chain.id} className="knowledge-chain-card">
+                            <div className="chain-card-header">
+                              <div>
+                                <h4 className="chain-card-title">{chain.title}</h4>
+                                <p className="chain-card-desc">{chain.description}</p>
+                              </div>
+                              <button
+                                className="knowledge-card-action-btn delete"
+                                onClick={(e) => handleDeleteChain(chain.id, e)}
+                                title="Delete Chain"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+
+                            {/* Sequential Steps Timeline */}
+                            <div className="chain-steps-track">
+                              {(chain.card_ids || []).map((cardId, stepIdx) => {
+                                const cardObj = knowledgeCards.find((c) => c.id === cardId);
+                                const cardName = cardObj ? cardObj.title : `Knowledge Step (${cardId.slice(0, 8)})`;
+                                return (
+                                  <div key={stepIdx} className="chain-step-node">
+                                    <span className="chain-step-number">Step {stepIdx + 1}</span>
+                                    <span className="chain-step-title">{cardName}</span>
+                                    {stepIdx < chain.card_ids.length - 1 && (
+                                      <span className="chain-step-arrow">➔</span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            <div className="chain-card-footer">
+                              <span className="knowledge-card-date">
+                                <Clock size={11} /> {new Date(chain.created_at || Date.now()).toLocaleDateString()}
+                              </span>
+                              <button
+                                className="knowledge-card-action-btn inject"
+                                onClick={() => handleInjectKnowledge(`Execute sequential analysis workflow: ${chain.title}`)}
+                              >
+                                <Send size={12} /> {isHindi ? 'चेन निष्पादित करें' : 'Run Chain Query'}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

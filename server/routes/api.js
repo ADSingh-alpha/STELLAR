@@ -99,4 +99,118 @@ router.get('/user/queries', async (req, res) => {
   }
 });
 
+/**
+ * NODUS-Inspired Knowledge Reuse Gateway:
+ * Forwards Knowledge Cards, Chains, and Search requests to FastAPI microservice.
+ */
+router.get('/knowledge/cards', async (req, res) => {
+  try {
+    const client = forwardWithAuth(req);
+    const response = await client.get('/api/v1/knowledge/cards', { params: req.query });
+    return res.json(response.data);
+  } catch (error) {
+    const status = error.response ? error.response.status : 500;
+    return res.status(status).json({ error: 'Failed to fetch knowledge cards', details: error.message });
+  }
+});
+
+router.post('/knowledge/cards', async (req, res) => {
+  try {
+    const client = forwardWithAuth(req);
+    const response = await client.post('/api/v1/knowledge/cards', req.body);
+    return res.json(response.data);
+  } catch (error) {
+    const status = error.response ? error.response.status : 500;
+    return res.status(status).json({ error: 'Failed to save knowledge card', details: error.message });
+  }
+});
+
+router.get('/knowledge/cards/:cardId', async (req, res) => {
+  try {
+    const client = forwardWithAuth(req);
+    const response = await client.get(`/api/v1/knowledge/cards/${req.params.cardId}`);
+    return res.json(response.data);
+  } catch (error) {
+    const status = error.response ? error.response.status : 404;
+    return res.status(status).json({ error: 'Knowledge card not found', details: error.message });
+  }
+});
+
+router.put('/knowledge/cards/:cardId', async (req, res) => {
+  try {
+    const client = forwardWithAuth(req);
+    const response = await client.put(`/api/v1/knowledge/cards/${req.params.cardId}`, req.body);
+    return res.json(response.data);
+  } catch (error) {
+    const status = error.response ? error.response.status : 500;
+    return res.status(status).json({ error: 'Failed to update knowledge card', details: error.message });
+  }
+});
+
+router.delete('/knowledge/cards/:cardId', async (req, res) => {
+  try {
+    const client = forwardWithAuth(req);
+    const response = await client.delete(`/api/v1/knowledge/cards/${req.params.cardId}`);
+    return res.json(response.data);
+  } catch (error) {
+    const status = error.response ? error.response.status : 404;
+    return res.status(status).json({ error: 'Failed to delete knowledge card', details: error.message });
+  }
+});
+
+router.get('/knowledge/chains', async (req, res) => {
+  try {
+    const client = forwardWithAuth(req);
+    const response = await client.get('/api/v1/knowledge/chains', { params: req.query });
+    return res.json(response.data);
+  } catch (error) {
+    const status = error.response ? error.response.status : 500;
+    return res.status(status).json({ error: 'Failed to list knowledge chains', details: error.message });
+  }
+});
+
+router.post('/knowledge/chains', async (req, res) => {
+  try {
+    const client = forwardWithAuth(req);
+    const response = await client.post('/api/v1/knowledge/chains', req.body);
+    return res.json(response.data);
+  } catch (error) {
+    const status = error.response ? error.response.status : 500;
+    return res.status(status).json({ error: 'Failed to save knowledge chain', details: error.message });
+  }
+});
+
+router.get('/knowledge/chains/:chainId', async (req, res) => {
+  try {
+    const client = forwardWithAuth(req);
+    const response = await client.get(`/api/v1/knowledge/chains/${req.params.chainId}`);
+    return res.json(response.data);
+  } catch (error) {
+    const status = error.response ? error.response.status : 404;
+    return res.status(status).json({ error: 'Knowledge chain not found', details: error.message });
+  }
+});
+
+router.delete('/knowledge/chains/:chainId', async (req, res) => {
+  try {
+    const client = forwardWithAuth(req);
+    const response = await client.delete(`/api/v1/knowledge/chains/${req.params.chainId}`);
+    return res.json(response.data);
+  } catch (error) {
+    const status = error.response ? error.response.status : 404;
+    return res.status(status).json({ error: 'Failed to delete knowledge chain', details: error.message });
+  }
+});
+
+router.get('/knowledge/retrieve', async (req, res) => {
+  try {
+    const client = forwardWithAuth(req);
+    const response = await client.get('/api/v1/knowledge/retrieve', { params: req.query });
+    return res.json(response.data);
+  } catch (error) {
+    const status = error.response ? error.response.status : 500;
+    return res.status(status).json({ error: 'Knowledge retrieval error', details: error.message });
+  }
+});
+
 export default router;

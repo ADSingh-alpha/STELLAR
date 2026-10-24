@@ -1439,6 +1439,11 @@ class AgentStateModel(BaseModel):
     
     artifacts: List[Artifact] = Field(default_factory=list, description="Output artifacts (masks, overlays, GeoJSON)")
     
+    # NODUS-Inspired Native Knowledge Reuse Layer
+    retrieved_knowledge: List[Dict[str, Any]] = Field(default_factory=list, description="Retrieved prior knowledge items")
+    injected_context: Optional[str] = Field(None, description="Formatted context string injected from knowledge store")
+    reused_knowledge_summary: Dict[str, Any] = Field(default_factory=dict, description="Metadata of reused knowledge items")
+
     # Lifecycle Status
     status: RequestStatus = RequestStatus.PENDING
     error: Optional[str] = None
@@ -1537,6 +1542,11 @@ class AgentStateModel(BaseModel):
             "confidence_breakdown": conf_breakdown_dict,
             "artifacts": [self._to_dict_deep(art) for art in self.artifacts],
             
+            # NODUS-Inspired Native Knowledge Reuse Layer
+            "retrieved_knowledge": self.retrieved_knowledge or [],
+            "injected_context": self.injected_context or "",
+            "reused_knowledge_summary": self.reused_knowledge_summary or {},
+
             # Lifecycle Status
             "status": self.status.value if hasattr(self.status, 'value') else self.status,
             "error": self.error

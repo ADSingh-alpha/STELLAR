@@ -96,6 +96,7 @@ export const translations = {
     // ── Sidebar — Nav Labels ──
     navSearch: 'Search',
     navHistory: 'History',
+    navKnowledge: 'Knowledge Base',
     navNotesDocs: 'Notes & Docs',
     navAbout: 'About & Team',
     navSettings: 'Settings',
@@ -295,6 +296,7 @@ export const translations = {
     // ── Sidebar — Nav Labels ──
     navSearch: 'खोज',
     navHistory: 'इतिहास',
+    navKnowledge: 'ज्ञान आधार',
     navNotesDocs: 'नोट्स & दस्तावेज़',
     navAbout: 'जानकारी & टीम',
     navSettings: 'सेटिंग्स',

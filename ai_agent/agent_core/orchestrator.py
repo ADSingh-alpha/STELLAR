@@ -737,6 +737,69 @@ class Orchestrator:
     supervisor_intent_router_node = controller_router_node
 
     # -----------------------------------------------------------------------
+    # Node 2a: NODUS-Inspired Native Knowledge Retrieval Node
+    # -----------------------------------------------------------------------
+    def knowledge_retrieval_node(self, state: AgentState) -> Dict[str, Any]:
+        """
+        NODUS-Inspired Native Knowledge Retrieval Node.
+        Retrieves relevant historical knowledge items (cards and chains) owned by the
+        authenticated caller or shared, bounds the result set, and formats a safe
+        delimited context block for downstream reasoning nodes.
+        
+        Guarantees:
+        - Current image-analysis evidence remains authoritative.
+        - All retrieved text is marked as untrusted prior material.
+        - Fails gracefully without breaking analysis if retrieval store is empty or unavailable.
+        """
+        query = state.get("raw_query") or state.get("query") or ""
+        user_id = state.get("user_id")
+
+        try:
+            from ..knowledge_store import retrieve_relevant_knowledge, format_knowledge_for_context
+            matched_cards = retrieve_relevant_knowledge(query, user_id=user_id, limit=3)
+            
+            if matched_cards:
+                injected_context = format_knowledge_for_context(matched_cards)
+                summary = {
+                    "card_count": len(matched_cards),
+                    "card_ids": [c.get("id") for c in matched_cards],
+                    "card_titles": [c.get("title") for c in matched_cards],
+                    "status": "reused_knowledge_injected"
+                }
+                reasoning_text = (
+                    f"Retrieved {len(matched_cards)} relevant historical knowledge items: "
+                    f"[{', '.join([c.get('title', '') for c in matched_cards])}]. "
+                    "Injected historical context into downstream reasoning without overriding current visual verification."
+                )
+            else:
+                injected_context = ""
+                summary = {"card_count": 0, "status": "no_prior_knowledge_matched"}
+                reasoning_text = "No relevant prior knowledge items matched current query."
+
+            thought_entry = {
+                "step_number": len(state.get("thought_trace") or []) + 1,
+                "agent_name": "knowledge_retriever",
+                "thought": reasoning_text,
+                "action_taken": "retrieved_historical_knowledge" if matched_cards else "skipped_retrieval",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+            return {
+                "retrieved_knowledge": matched_cards,
+                "injected_context": injected_context,
+                "reused_knowledge_summary": summary,
+                "thought_trace": [thought_entry],
+                "routing_history": ["knowledge_retrieval"],
+            }
+        except Exception as e:
+            return {
+                "retrieved_knowledge": [],
+                "injected_context": "",
+                "reused_knowledge_summary": {"card_count": 0, "error": str(e), "status": "retrieval_error"},
+                "routing_history": ["knowledge_retrieval"],
+            }
+
+    # -----------------------------------------------------------------------
     # Node 2b: Interpret & Validate Node (LLM-based)
     # -----------------------------------------------------------------------
     def interpret_and_validate_node(self, state: AgentState) -> Dict[str, Any]:
@@ -2324,10 +2387,26 @@ class Orchestrator:
             "timestamp": datetime.utcnow().isoformat(),
         }
 
+        retrieved_cards = state.get("retrieved_knowledge") or []
+        detailed_text = f"Specialist models executed: {state.get('selected_specialist_models')}. Rationale: {state.get('task_reasoning')}"
+        if retrieved_cards:
+            card_summaries = "; ".join([f"[{c.get('title', 'Item')}]: {c.get('summary', '')}" for c in retrieved_cards])
+            detailed_text += f"\n\n[NODUS-Inspired Reused Knowledge]: Integrated context from {len(retrieved_cards)} prior saved items: {card_summaries}"
+
+            # Check for conflict between prior knowledge and current image evidence
+            historical_text = " ".join([(c.get("summary") or "") + " " + (c.get("content") or "") for c in retrieved_cards]).lower()
+            if c_mask and c_mask.get("changed_area_sq_km", 0) > 0 and ("no change" in historical_text or "undisturbed" in historical_text or "no deforestation" in historical_text):
+                discrepancy_note = (
+                    f" [Discrepancy Note: Prior historical record reported undisturbed terrain, "
+                    f"whereas current satellite evidence confirms {c_mask.get('changed_area_sq_km'):.2f} sq km of newly verified change.]"
+                )
+                final_ans += discrepancy_note
+                detailed_text += f"\n{discrepancy_note}"
+
         return {
             "final_response": final_ans,
             "executive_summary": exec_summary,
-            "detailed_analysis": f"Specialist models executed: {state.get('selected_specialist_models')}. Rationale: {state.get('task_reasoning')}",
+            "detailed_analysis": detailed_text,
             "confidence_score": overall_conf,
             "confidence_breakdown": conf_breakdown,
             "artifacts": artifacts,
@@ -2496,7 +2575,7 @@ class Orchestrator:
 
     @staticmethod
     def _route_after_controller(state: AgentState) -> str:
-        return "interpret_and_validate"
+        return "knowledge_retrieval"
 
     @staticmethod
     def _route_after_interpret(state: AgentState) -> str:
@@ -2590,6 +2669,7 @@ class Orchestrator:
             # ── Nodes ─────────────────────────────────────────────────────
             builder.add_node("input_validator",             self.input_validator_node)
             builder.add_node("controller_router",           self.controller_router_node)
+            builder.add_node("knowledge_retrieval",         self.knowledge_retrieval_node)
             builder.add_node("interpret_and_validate",      self.interpret_and_validate_node)
             builder.add_node("validate_tool_params",         self.validate_tool_params_node)
             builder.add_node("human_clarification",         self.human_clarification_node)
@@ -2617,12 +2697,13 @@ class Orchestrator:
             )
             builder.add_edge("human_clarification", END)
 
-            # ── Controller → Interpret & Validate ───────────────────────────
+            # ── Controller → Knowledge Retrieval → Interpret & Validate ───
             builder.add_conditional_edges(
                 "controller_router",
                 self._route_after_controller,
-                {"interpret_and_validate": "interpret_and_validate"},
+                {"knowledge_retrieval": "knowledge_retrieval"},
             )
+            builder.add_edge("knowledge_retrieval", "interpret_and_validate")
 
             # ── Interpret & Validate → validate_tool_params (always) ────────
             # If invalid, the guardrail passes through and interpret routes to clarification.
@@ -2715,12 +2796,14 @@ class Orchestrator:
                     for field in ["routing_history", "thought_trace", "tool_logs",
                                   "artifacts", "bounding_boxes", "completed_specialists",
                                   "execution_trace", "image_inputs", "param_guardrail_log",
-                                  "conversation_history", "reference_resolution_log"]:
+                                  "conversation_history", "reference_resolution_log",
+                                  "retrieved_knowledge"]:
                         if curr.get(field) is None:
                             curr[field] = []
                     for field in ["intermediate_outputs", "spatial_outputs",
                                   "tool_outputs", "tool_confidence_scores",
-                                  "sanitized_tool_params", "spatial_context_cache", "isro_trace"]:
+                                  "sanitized_tool_params", "spatial_context_cache", "isro_trace",
+                                  "reused_knowledge_summary"]:
                         if curr.get(field) is None:
                             curr[field] = {}
 
@@ -2736,6 +2819,7 @@ class Orchestrator:
                         "intermediate_outputs", "spatial_outputs",
                         "specialist_model_configs", "sanitized_tool_params",
                         "spatial_context_cache", "isro_trace",
+                        "reused_knowledge_summary",
                     }
                     for k, v in updates.items():
                         if k in _append_keys:
@@ -2762,6 +2846,9 @@ class Orchestrator:
 
                     # 2. Controller Router
                     self._merge(curr, self.orch.controller_router_node(curr))
+
+                    # 2b. Knowledge Retrieval (NODUS-Inspired Reused Intelligence)
+                    self._merge(curr, self.orch.knowledge_retrieval_node(curr))
 
                     # 3. Interpret & Validate
                     self._merge(curr, self.orch.interpret_and_validate_node(curr))
