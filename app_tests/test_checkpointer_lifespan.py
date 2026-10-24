@@ -48,8 +48,8 @@ async def test_health_endpoint():
 
 
 @pytest.mark.anyio
-async def test_query_stream_sse_endpoint():
-    """Verify /query/stream returns text/event-stream with LangGraph astream_events."""
+async def test_ai_stream_sse_endpoint():
+    """Verify /ai/stream returns text/event-stream with node_transition and tool_completed events."""
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -58,9 +58,27 @@ async def test_query_stream_sse_endpoint():
                 "query": "Calculate NDVI for Bangalore agricultural fields",
                 "aoi_bbox": [77.5, 12.9, 77.6, 13.0],
             }
+            resp = await client.post("/ai/stream", json=payload)
+            assert resp.status_code == 200
+            assert "text/event-stream" in resp.headers["content-type"]
+            body = resp.text
+            assert "data: " in body
+            assert "node_transition" in body or "tool_completed" in body
+
+
+@pytest.mark.anyio
+async def test_query_stream_sse_endpoint():
+    """Verify /query/stream alias returns text/event-stream."""
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            payload = {
+                "session_id": "session-test-sse-456",
+                "query": "Calculate NDVI for Bangalore agricultural fields",
+                "aoi_bbox": [77.5, 12.9, 77.6, 13.0],
+            }
             resp = await client.post("/query/stream", json=payload)
             assert resp.status_code == 200
             assert "text/event-stream" in resp.headers["content-type"]
             body = resp.text
             assert "data: " in body
-            assert "on_chain_start" in body or "on_tool_start" in body or "on_chain_end" in body

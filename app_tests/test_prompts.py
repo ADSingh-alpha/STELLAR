@@ -16,7 +16,7 @@ def test_system_prompts_content():
 
     assert "Senior Remote Sensing & Geospatial Specialist Agent" in SPECIALIST_AGENT_SYSTEM_PROMPT
     assert "WGS84 / EPSG:4326" in SPECIALIST_AGENT_SYSTEM_PROMPT
-    assert "[min_lon, min_lat, max_lon, max_lat]" in SPECIALIST_AGENT_SYSTEM_PROMPT
+    assert "min_lon, min_lat, max_lon, max_lat" in SPECIALIST_AGENT_SYSTEM_PROMPT
     assert "<= 1.0 degree per side" in SPECIALIST_AGENT_SYSTEM_PROMPT
 
     assert "Geospatial Intelligence Report Synthesizer" in SYNTHESIZER_SYSTEM_PROMPT

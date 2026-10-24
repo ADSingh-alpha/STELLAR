@@ -47,5 +47,10 @@ def setup_gpu_guard() -> None:
         logger.warning("Error inspecting PyTorch CUDA configuration: %s", exc)
 
 
+# Alias for configure_gpu_memory
+configure_gpu_memory = setup_gpu_guard
+
 # Ensure safe setup runs on module load
 setup_gpu_guard()
+
+__all__ = ["setup_gpu_guard", "configure_gpu_memory"]
