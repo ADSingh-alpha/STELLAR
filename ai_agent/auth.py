@@ -76,6 +76,15 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
+def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
+    """Decode and validate a JWT access token, returning the payload if valid."""
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        return payload
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Internal Service Authentication & JWT Validation
 # ---------------------------------------------------------------------------
