@@ -1098,6 +1098,16 @@ class RSAgentState(TypedDict, total=False):
     # Extended analytical breakdown citing band-specific evidence, metrics,
     # and confidence intervals.
 
+    # ── NODUS-Inspired Native Knowledge Reuse Layer ─────────────────────────
+    retrieved_knowledge: Optional[List[Dict[str, Any]]]
+    # Prior saved knowledge cards retrieved for query augmentation.
+
+    injected_context: Optional[str]
+    # Formatted, delimited prompt context block from saved items.
+
+    reused_knowledge_summary: Optional[Dict[str, Any]]
+    # Provenance tracking indicating which prior cards contributed to this analysis.
+
     # ── Output: Spatial Results ───────────────────────────────────────────────
     spatial_outputs: Annotated[Dict[str, Any], merge_dicts]
     # Unified spatial results container (bounding_boxes list + change_mask dict
@@ -1348,6 +1358,10 @@ def make_empty_rs_state(
         confidence_score=None,
         confidence_breakdown=None,
         artifacts=[],
+        # NODUS-Inspired Native Knowledge Reuse
+        retrieved_knowledge=[],
+        injected_context="",
+        reused_knowledge_summary={},
         # Lifecycle
         status="pending",
         error=None,
