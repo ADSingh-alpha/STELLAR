@@ -864,6 +864,11 @@ class AgentState(TypedDict):
     is_followup_query: bool                                               # True when relative refs were resolved
     reference_resolution_log: Annotated[List[Dict[str, Any]], operator.add]  # Audit of reference resolutions
 
+    # 11. NODUS-Inspired Native Knowledge Reuse Layer
+    retrieved_knowledge: Optional[List[Dict[str, Any]]]                  # Reusable knowledge cards retrieved for current query
+    injected_context: Optional[str]                                      # Delimited historical knowledge prompt context
+    reused_knowledge_summary: Optional[Dict[str, Any]]                   # Provenance and metadata of reused knowledge
+
 
 # ---------------------------------------------------------------------------
 # RSAgentState — Comprehensive TypedDict for the RS Agent Workflow
