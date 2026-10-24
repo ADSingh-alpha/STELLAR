@@ -1,7 +1,5 @@
-﻿<div align="center">
+<div align="center">
 
-<img src="https://img.shields.io/badge/SIH-2024-orange?style=for-the-badge" />
-<img src="https://img.shields.io/badge/ISRO-Satellite%20Intelligence-blue?style=for-the-badge" />
 <img src="https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white" />
 <img src="https://img.shields.io/badge/FastAPI-0.104-009688?style=for-the-badge&logo=fastapi&logoColor=white" />
 <img src="https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black" />
