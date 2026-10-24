@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { testDbConnection } from './config/db.js';
 
+import apiRoutes from './routes/api.js';
+
 dotenv.config();
 
 /**
@@ -22,6 +24,8 @@ app.get('/health', (req, res) => {
     database: 'PostgreSQL'
   });
 });
+
+app.use('/api/v1', apiRoutes);
 
 app.listen(PORT, async () => {
   console.log(`Express Server running on port ${PORT}`);

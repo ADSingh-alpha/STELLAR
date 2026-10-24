@@ -76,13 +76,78 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
-def decode_access_token(token: str) -> Optional[dict]:
-    """Decode and validate a JWT access token."""
-    try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-        return payload
-    except jwt.PyJWTError:
-        return None
+# ---------------------------------------------------------------------------
+# Internal Service Authentication & JWT Validation
+# ---------------------------------------------------------------------------
+
+INTERNAL_SERVICE_SECRET = os.getenv(
+    "INTERNAL_SERVICE_SECRET", "stellar_secret_internal_microservice_key_2026"
+)
+
+try:
+    from fastapi import Header, HTTPException, Depends
+    FASTAPI_INJECT_AVAILABLE = True
+except ImportError:
+    FASTAPI_INJECT_AVAILABLE = False
+    def Header(default=None, **kwargs): return default
+    def Depends(fn=None): return None
+    class HTTPException(Exception):
+        def __init__(self, status_code: int, detail: str):
+            super().__init__(detail)
+            self.status_code = status_code
+            self.detail = detail
+
+
+def verify_internal_service_key(
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Service-Key")
+) -> bool:
+    """
+    Validate internal microservice secret key for service-to-service calls
+    between Express API Gateway and FastAPI microservice.
+    Rejects unauthorized external requests with 403 Forbidden.
+    """
+    if not x_internal_key or not hmac.compare_digest(str(x_internal_key), INTERNAL_SERVICE_SECRET):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Invalid or missing X-Internal-Service-Key header."
+        )
+    return True
+
+
+def verify_authenticated_caller(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Service-Key")
+) -> Dict[str, Any]:
+    """
+    Dual-layer authentication verifier:
+    Allows requests from either:
+    1. Express API Gateway (via valid X-Internal-Service-Key header), OR
+    2. Direct user client requests with valid Bearer JWT access token.
+    Prevents unauthorized direct access to FastAPI internal endpoints.
+    """
+    # Allow bypassing authentication in explicit local test mode if configured
+    if os.getenv("DISABLE_AUTH_FOR_TESTS", "").lower() in ("true", "1"):
+        return {"auth_type": "test_bypass", "user": None, "is_internal": True}
+
+    # 1. Service-to-service call from Express Gateway
+    if x_internal_key and hmac.compare_digest(str(x_internal_key), INTERNAL_SERVICE_SECRET):
+        user_payload = None
+        if authorization and authorization.startswith("Bearer "):
+            token = authorization.split(" ")[1]
+            user_payload = decode_access_token(token)
+        return {"auth_type": "internal_service", "user": user_payload, "is_internal": True}
+
+    # 2. Direct user client call with JWT
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+        payload = decode_access_token(token)
+        if payload:
+            return {"auth_type": "jwt_user", "user": payload, "is_internal": False}
+
+    raise HTTPException(
+        status_code=401,
+        detail="Unauthorized: Valid Authorization Bearer token or X-Internal-Service-Key required."
+    )
 
 
 # ---------------------------------------------------------------------------
