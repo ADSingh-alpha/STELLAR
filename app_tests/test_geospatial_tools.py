@@ -110,7 +110,9 @@ async def test_tool_node_handles_validation_error_gracefully():
             )
         ],
         "intent": "ndvi",
+        "missing_aoi": False,
         "aoi_bbox": None,
+        "date_range": None,
         "raster_artifact_uri": None,
         "specialist_metrics": None,
         "iteration_count": 0,

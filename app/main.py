@@ -57,6 +57,10 @@ class QueryStreamRequest(BaseModel):
         default=None,
         description="Optional pre-selected WGS84 bounding box (min_lon, min_lat, max_lon, max_lat)"
     )
+    date_range: Optional[Tuple[str, str]] = Field(
+        default=None,
+        description="Optional temporal filter range ('YYYY-MM-DD', 'YYYY-MM-DD')"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +163,9 @@ async def stream_query(request: QueryStreamRequest):
         initial_input: Dict[str, Any] = {
             "messages": [HumanMessage(content=request.query)],
             "intent": None,
+            "missing_aoi": False,
             "aoi_bbox": request.aoi_bbox,
+            "date_range": request.date_range,
             "raster_artifact_uri": None,
             "specialist_metrics": None,
             "iteration_count": 0,

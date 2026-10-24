@@ -14,7 +14,9 @@ async def test_structured_routing_ndvi():
     initial_state: StellarAgentState = {
         "messages": [HumanMessage(content="Please calculate NDVI over Bangalore vegetation")],
         "intent": None,
+        "missing_aoi": False,
         "aoi_bbox": None,
+        "date_range": None,
         "raster_artifact_uri": None,
         "specialist_metrics": None,
         "iteration_count": 0,
@@ -38,7 +40,9 @@ async def test_general_qa_routing():
     initial_state: StellarAgentState = {
         "messages": [HumanMessage(content="What satellites are in orbit?")],
         "intent": None,
+        "missing_aoi": False,
         "aoi_bbox": None,
+        "date_range": None,
         "raster_artifact_uri": None,
         "specialist_metrics": None,
         "iteration_count": 0,
@@ -75,7 +79,9 @@ async def test_max_iteration_guard_enforced():
             AIMessage(content="", tool_calls=[tool_call])
         ],
         "intent": "ndvi",
+        "missing_aoi": False,
         "aoi_bbox": (77.5, 12.9, 77.6, 13.0),
+        "date_range": None,
         "raster_artifact_uri": None,
         "specialist_metrics": None,
         "iteration_count": MAX_ITERATIONS,  # Already at max iterations!

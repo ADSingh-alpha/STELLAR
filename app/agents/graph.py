@@ -17,6 +17,11 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.state import StellarAgentState, IntentType
 from app.agents.tools import geospatial_tool_node, GEOSPATIAL_TOOLS
+from app.agents.prompts import (
+    ROUTER_SYSTEM_PROMPT,
+    SPECIALIST_AGENT_SYSTEM_PROMPT,
+    SYNTHESIZER_SYSTEM_PROMPT,
+)
 
 logger = logging.getLogger("stellar.graph")
 
@@ -43,6 +48,14 @@ class RouteDecision(BaseModel):
     reasoning: Optional[str] = Field(
         default=None,
         description="Reasoning trace for intent classification and coordinate identification"
+    )
+    missing_aoi: bool = Field(
+        default=False,
+        description="True if user requested raster analysis but no AOI or location could be deduced"
+    )
+    date_range: Optional[Tuple[str, str]] = Field(
+        default=None,
+        description="Optional date range ('YYYY-MM-DD', 'YYYY-MM-DD') for temporal queries"
     )
 
 
@@ -122,15 +135,18 @@ def create_stellar_graph(
         Classifies incoming query into structured RouteDecision using .with_structured_output().
         """
         messages = state.get("messages", [])
+        prompt_messages = [SystemMessage(content=ROUTER_SYSTEM_PROMPT)] + list(messages)
         structured_llm = llm.with_structured_output(RouteDecision)
         
         # Async invocation
-        decision: RouteDecision = await structured_llm.ainvoke(messages)
+        decision: RouteDecision = await structured_llm.ainvoke(prompt_messages)
 
         existing_iterations = state.get("iteration_count", 0)
         return {
             "intent": decision.intent,
             "aoi_bbox": decision.aoi_bbox,
+            "missing_aoi": decision.missing_aoi,
+            "date_range": decision.date_range,
             "iteration_count": existing_iterations,
             "error_state": None,
         }

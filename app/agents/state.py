@@ -1,28 +1,18 @@
-"""
-Slim & Strictly Typed Graph State for STELLAR AI.
-
-Replaces untyped dictionaries and raw NumPy/base64 payloads with a compact,
-strictly validated TypedDict to prevent memory bloat and VRAM exhaustion.
-Only raster artifact URIs/pointers are stored, never raw raster arrays or bytes.
-"""
-
-from typing import Annotated, Optional, Literal, TypedDict
-from langchain_core.messages import AnyMessage
+# app/agents/state.py
+from typing import Annotated, TypedDict, Literal, Optional
 from langgraph.graph.message import add_messages
+from langchain_core.messages import AnyMessage
 
-# Allowed intent classifications
 IntentType = Literal["ndvi", "ndwi", "flood", "urban_change", "general_qa"]
 
 
 class StellarAgentState(TypedDict):
-    """
-    Slim, bounded LangGraph state for STELLAR multi-agent workflows.
-    Guarantees zero raw raster array or base64 storage in memory/checkpoints.
-    """
     messages: Annotated[list[AnyMessage], add_messages]
-    intent: Optional[Literal["ndvi", "ndwi", "flood", "urban_change", "general_qa"]]
-    aoi_bbox: Optional[tuple[float, float, float, float]]
-    raster_artifact_uri: Optional[str]
-    specialist_metrics: Optional[dict[str, float]]
-    iteration_count: int
-    error_state: Optional[str]
+    intent: Optional[IntentType]
+    missing_aoi: bool
+    aoi_bbox: Optional[tuple[float, float, float, float]]  # Strictly (min_lon, min_lat, max_lon, max_lat) in EPSG:4326
+    date_range: Optional[tuple[str, str]]                  # ("YYYY-MM-DD", "YYYY-MM-DD")
+    raster_artifact_uri: Optional[str]                     # Pointer/URI to processed COG/GeoTIFF, NEVER raw bytes
+    specialist_metrics: Optional[dict[str, float]]         # Scalar summary stats (mean_ndvi, cloud_cover_pct, area_km2)
+    iteration_count: int                                   # Hard loop-breaker counter
+    error_state: Optional[str]                             # Populated if tool retries fail
